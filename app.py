@@ -42,6 +42,7 @@ DEFAULTS = {
     "session_rules": None,   # editable rules for this session
     "services": None,        # list of service dicts [{date, hc, combined, notes}, ...]
     "unavailability": None,  # dict: date_str -> set of unavailable names
+    "prev_quarter_data": None, # {load_counts, last_week_crew} from previous CSV
     "roster": None,          # generated roster data
     "original_roster": None, # for undo/reset
 }
@@ -274,6 +275,36 @@ def render_stage_1():
                     st.session_state.mt_role_names = role_names
                 else:
                     st.session_state.volunteers = data.load_welcome_volunteers()
+                st.rerun()
+
+    # Previous quarter carry-forward (optional)
+    st.divider()
+    with st.expander("Previous quarter (optional)"):
+        st.markdown("Upload last quarter's CSV export to carry forward shift counts and avoid back-to-back scheduling across quarters.")
+        uploaded = st.file_uploader(
+            "Upload previous quarter CSV",
+            type=["csv"],
+            key="prev_quarter_upload",
+        )
+        if uploaded:
+            try:
+                csv_text = uploaded.read().decode("utf-8")
+                sr = st.session_state.session_rules or {}
+                lead_name = sr.get("lead_role_name", rules.MT_LEAD_ROLE) if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH else rules.W_LEAD_ROLE
+                prev_data = data.parse_previous_quarter_csv(
+                    csv_text, st.session_state.ministry, lead_name
+                )
+                st.session_state.prev_quarter_data = prev_data
+                st.success(f"Loaded {len(prev_data['load_counts'])} people's shift counts. Last week's crew: {len(prev_data['last_week_crew'])} people.")
+                with st.expander("View imported data"):
+                    st.write("**Shift counts:**", prev_data["load_counts"])
+                    st.write("**Last week's crew:**", prev_data["last_week_crew"])
+            except Exception as e:
+                st.error(f"Failed to parse CSV: {e}")
+        elif st.session_state.get("prev_quarter_data"):
+            st.success("Previous quarter data loaded.")
+            if st.button("Clear previous quarter data"):
+                st.session_state.prev_quarter_data = None
                 st.rerun()
 
     # Next button
@@ -658,15 +689,17 @@ def render_stage_5_roster():
 
         sr = st.session_state.session_rules or {}
 
+        prev_data = st.session_state.get("prev_quarter_data")
+
         if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
             result = engine.generate_mt_roster(
                 volunteers, services, unavailability, seed=seed,
-                session_rules=sr,
+                session_rules=sr, prev_quarter_data=prev_data,
             )
         else:
             result = engine.generate_welcome_roster(
                 volunteers, services, unavailability, seed=seed,
-                session_rules=sr,
+                session_rules=sr, prev_quarter_data=prev_data,
             )
 
         st.session_state.roster = result
@@ -848,15 +881,17 @@ def _render_lock_and_regen(result, services, volunteers, unavailability, display
 
             sr = st.session_state.session_rules or {}
 
+            prev_data = st.session_state.get("prev_quarter_data")
+
             if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
                 new_result = engine.generate_mt_roster(
                     volunteers, services, unavailability, seed=seed,
-                    locked_cells=locked, session_rules=sr,
+                    locked_cells=locked, session_rules=sr, prev_quarter_data=prev_data,
                 )
             else:
                 new_result = engine.generate_welcome_roster(
                     volunteers, services, unavailability, seed=seed,
-                    locked_cells=locked, session_rules=sr,
+                    locked_cells=locked, session_rules=sr, prev_quarter_data=prev_data,
                 )
 
             st.session_state.roster = new_result
@@ -978,9 +1013,8 @@ def _render_stage_5_nav():
             reset_all()
             st.rerun()
 
-    # CSV Export
+    # CSV Export + Google Sheets copy
     if result and services:
-        # Recount load from current roster state (includes manual edits)
         live_load = _count_live_load(result["roster"])
         csv_str = export.roster_to_csv(
             result["roster"],
@@ -996,6 +1030,18 @@ def _render_stage_5_nav():
                 file_name=f"{ministry_slug}_roster.csv",
                 mime="text/csv",
                 type="primary",
+            )
+
+        # Google Sheets paste-ready format
+        st.divider()
+        with st.expander("Copy to Google Sheets"):
+            st.markdown("Copy the text below and paste directly into Google Sheets (Ctrl+V).")
+            tsv_str = data.format_for_sheets_paste(csv_str)
+            st.text_area(
+                "Tab-separated (select all → copy → paste into Google Sheets)",
+                value=tsv_str,
+                height=300,
+                key="sheets_paste",
             )
 
 

@@ -215,3 +215,153 @@ def get_couple_map(volunteers: List[Dict]) -> Dict[str, str]:
             couple_map[names[0]] = names[1]
             couple_map[names[1]] = names[0]
     return couple_map
+
+
+# ---------------------------------------------------------------------------
+# Previous Quarter CSV Parser
+# ---------------------------------------------------------------------------
+
+def parse_previous_quarter_csv(
+    csv_text: str,
+    ministry: str,
+    lead_role_name: str = "Media Team Lead",
+) -> Dict:
+    """
+    Parse a previously exported CSV to extract:
+    - shift_counts: {name -> int}
+    - last_week_crew: set of names from the last date column
+
+    The CSV format (from export.py):
+    - Monthly blocks with "Role \\ Date" header row
+    - Load Statistics section at the bottom
+
+    Returns {"load_counts": dict, "last_week_crew": set}
+    """
+    import rules as _rules
+
+    lines = csv_text.strip().split("\n")
+
+    # Strategy: find all roster rows (not headers, not month names, not load stats)
+    # and extract names from them
+    shift_counts: Dict[str, int] = {}
+    all_date_columns: List[List[str]] = []  # each entry is a column of names for one date
+    in_load_stats = False
+    current_date_count = 0
+
+    # Roles that don't count toward load
+    if ministry == _rules.MINISTRY_MEDIA_TECH:
+        excluded_roles = {lead_role_name.lower()}
+    else:
+        excluded_roles = set()  # Welcome: all roles count
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("Load Statistics"):
+            in_load_stats = True
+            continue
+
+        if in_load_stats:
+            # Parse load stats: "Name,Count"
+            parts = line.split(",")
+            if len(parts) >= 2 and parts[0] != "Name":
+                name = parts[0].strip()
+                try:
+                    count = int(parts[1].strip())
+                    shift_counts[name] = count
+                except ValueError:
+                    pass
+            continue
+
+        # Detect header row: "Role \ Date,05-Apr,12-Apr,..."
+        if "Role" in line and "Date" in line:
+            parts = line.split(",")
+            current_date_count = len(parts) - 1
+            # Initialize columns for this block
+            all_date_columns = [[] for _ in range(current_date_count)]
+            continue
+
+        # Skip month name lines (e.g. "April 2026")
+        parts = line.split(",")
+        if len(parts) == 1:
+            continue
+
+        # Roster row: "Role,Name1,Name2,..."
+        if len(parts) >= 2 and current_date_count > 0:
+            role = parts[0].strip()
+            if role.lower() == "details":
+                continue
+            # Check if this role counts
+            if role.lower() in excluded_roles:
+                continue
+            for i, name in enumerate(parts[1:]):
+                name = name.strip()
+                if name and i < len(all_date_columns):
+                    all_date_columns[i].append(name)
+
+    # If we didn't find load stats in the CSV, count from roster data
+    if not shift_counts:
+        for col in all_date_columns:
+            for name in col:
+                if name:
+                    shift_counts[name] = shift_counts.get(name, 0) + 1
+
+    # Last week's crew = names from the last date column
+    last_week_crew = set()
+    if all_date_columns:
+        last_week_crew = {n for n in all_date_columns[-1] if n}
+
+    return {
+        "load_counts": shift_counts,
+        "last_week_crew": last_week_crew,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Google Sheets Push Export
+# ---------------------------------------------------------------------------
+
+def push_to_google_sheet(
+    csv_text: str,
+    sheet_id: str,
+    tab_name: str = "Generated Roster",
+) -> bool:
+    """
+    Write CSV data to a Google Sheet tab.
+    Creates the tab if it doesn't exist, clears it if it does.
+
+    Note: This requires the sheet to be publicly editable or
+    uses the same auth-free approach as reading (not possible for writes).
+    For now, this uses a simple approach via Google Sheets API v4 with an API key.
+
+    Returns True on success.
+    """
+    # Google Sheets API requires OAuth for writes.
+    # Since we can't do OAuth in Streamlit easily, we'll use a workaround:
+    # Export the data as a TSV that the user can paste, OR
+    # use the Google Apps Script web app approach.
+
+    # For now, return the formatted data for clipboard copy
+    raise NotImplementedError(
+        "Direct Google Sheets push requires OAuth. "
+        "Use the clipboard copy approach instead."
+    )
+
+
+def format_for_sheets_paste(csv_text: str) -> str:
+    """
+    Convert CSV to tab-separated format for easy paste into Google Sheets.
+    User can select all, copy, and paste into their Google Sheet.
+    """
+    lines = csv_text.strip().split("\n")
+    tsv_lines = []
+    for line in lines:
+        # Simple CSV -> TSV conversion
+        # Handle quoted fields
+        import csv as _csv
+        reader = _csv.reader([line])
+        for row in reader:
+            tsv_lines.append("\t".join(row))
+    return "\n".join(tsv_lines)
