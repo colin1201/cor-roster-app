@@ -21,6 +21,14 @@ The lead logic was wrong in BOTH previous prototypes. The correct logic is:
 4. If Darrell unavailable → leave unfilled
 5. Lead does NOT count toward shift load
 
+## Google Sheet is the Master List
+The Google Sheet is the single source of truth for volunteers and roles. The app MUST always reflect the current state of the sheet:
+- Roles come from sheet column headers — never hardcoded in the app
+- Volunteer qualifications come from the sheet — never cached across reloads
+- When volunteers are reloaded, ALL downstream state must reset (session_rules, services, unavailability, roster) to prevent stale data
+- Never store sheet-derived data that could go stale without a clear reload path
+
 ## Deployment
-- Hosted on Streamlit Cloud
-- GitHub account: colin1201
+- Hosted on Streamlit Cloud: https://cor-mediatech-welcome.streamlit.app/
+- GitHub repo: colin1201/cor-roster-app
+- Auto-deploys on push to master

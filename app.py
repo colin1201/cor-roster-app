@@ -268,8 +268,8 @@ def render_stage_1():
             st.dataframe(vol_df, hide_index=True, use_container_width=True)
             if st.button("Reload from Google Sheet"):
                 data.clear_cache()
-                st.session_state.volunteers = None
-                st.session_state.session_rules = None  # Reset rules to pick up new columns
+                # Reset ALL downstream state — sheet is master
+                reset_from_stage(2)
                 if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
                     vols, role_names = data.load_mt_volunteers()
                     st.session_state.volunteers = vols
