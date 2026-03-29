@@ -372,6 +372,19 @@ def render_stage_2():
 
     sr = st.session_state.session_rules
 
+    # Reload button — refresh from Google Sheet without going back
+    if st.button("Refresh roles from Google Sheet", key="reload_stage2"):
+        data.clear_cache()
+        reset_from_stage(2)
+        if ministry == rules.MINISTRY_MEDIA_TECH:
+            vols, role_names = data.load_mt_volunteers()
+            st.session_state.volunteers = vols
+            st.session_state.mt_role_names = role_names
+        else:
+            st.session_state.volunteers = data.load_welcome_volunteers()
+        st.session_state.session_rules = _get_default_rules(ministry)
+        st.rerun()
+
     if ministry == rules.MINISTRY_MEDIA_TECH:
         # --- Media Tech Rules ---
         st.subheader("Staffing per service")
