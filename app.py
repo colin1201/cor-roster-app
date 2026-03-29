@@ -27,8 +27,21 @@ import rules
 st.set_page_config(
     page_title="COR Roster App",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
+
+# Custom CSS
+st.markdown("""
+<style>
+    /* Prominent next button */
+    div[data-testid="stButton"] button[kind="primary"] {
+        font-size: 1.1rem;
+        padding: 0.6rem 2rem;
+    }
+    /* Details row styling in data editor */
+    .details-row { color: #64748b; font-style: italic; }
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Session State Initialization
@@ -107,8 +120,8 @@ def go_to(stage: int):
 
 
 def nav_buttons(current_stage: int, back_label="Back", next_label="Next", next_disabled=False):
-    """Render Back / Start Over / Next buttons."""
-    cols = st.columns([1, 1, 3, 1])
+    """Render Back / Start Over buttons on left, prominent Next button centred below."""
+    cols = st.columns([1, 1, 4])
     with cols[0]:
         if current_stage > 0:
             if st.button(f"← {back_label}", key=f"back_{current_stage}"):
@@ -125,9 +138,13 @@ def nav_buttons(current_stage: int, back_label="Back", next_label="Next", next_d
             if st.button("Start Over", key=f"restart_{current_stage}"):
                 st.session_state[confirm_key] = True
                 st.rerun()
-    with cols[3]:
+
+    # Prominent centred Next button
+    st.markdown("")
+    _, center, _ = st.columns([2, 2, 2])
+    with center:
         if st.button(f"{next_label} →", key=f"next_{current_stage}",
-                      type="primary", disabled=next_disabled):
+                      type="primary", disabled=next_disabled, use_container_width=True):
             return True
     return False
 
@@ -136,16 +153,18 @@ def nav_buttons(current_stage: int, back_label="Back", next_label="Next", next_d
 # Stage 0: Ministry Selection
 # ---------------------------------------------------------------------------
 def render_stage_0():
-    st.title("COR Roster App")
-    st.markdown("### Which ministry are you from?")
-
-    col1, col2 = st.columns(2)
+    st.markdown("")
+    st.markdown("")
+    st.markdown("<h1 style='text-align: center;'>COR Roster App</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748b; font-size: 1.1rem;'>Church of the Redeemer — Volunteer Roster Generator</p>", unsafe_allow_html=True)
+    st.markdown("")
+    st.markdown("<h4 style='text-align: center;'>Which ministry are you from?</h4>", unsafe_allow_html=True)
+    st.markdown("")
 
     def _select_ministry(ministry):
         if st.session_state.ministry != ministry:
             reset_all()
             st.session_state.ministry = ministry
-        # Auto-load volunteers
         with st.spinner(f"Loading {ministry} volunteers..."):
             try:
                 if ministry == rules.MINISTRY_MEDIA_TECH:
@@ -159,20 +178,27 @@ def render_stage_0():
             except Exception as e:
                 st.error(f"Failed to load volunteers: {e}")
 
+    _, col1, col2, _ = st.columns([1, 2, 2, 1])
     with col1:
-        if st.button(
-            "⚙️ Media Tech",
-            use_container_width=True,
-            type="primary" if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH else "secondary",
-        ):
+        st.markdown(
+            "<div style='text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;'>"
+            "<div style='font-size: 2rem;'>⚙️</div>"
+            "<div style='font-weight: 600; margin-top: 0.5rem;'>Media Tech</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Select Media Tech", use_container_width=True, type="primary"):
             _select_ministry(rules.MINISTRY_MEDIA_TECH)
 
     with col2:
-        if st.button(
-            "👋 Welcome",
-            use_container_width=True,
-            type="primary" if st.session_state.ministry == rules.MINISTRY_WELCOME else "secondary",
-        ):
+        st.markdown(
+            "<div style='text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;'>"
+            "<div style='font-size: 2rem;'>👋</div>"
+            "<div style='font-weight: 600; margin-top: 0.5rem;'>Welcome</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Select Welcome", use_container_width=True, type="primary"):
             _select_ministry(rules.MINISTRY_WELCOME)
 
 
@@ -952,8 +978,24 @@ def _render_load_stats(result, services):
             {"Name": name, "Shifts": count}
             for name, count in sorted(live_load.items(), key=lambda x: (-x[1], x[0]))
         ]
+        max_shifts = max(r["Shifts"] for r in stats_rows) if stats_rows else 1
+
+        # Styled load table with bar visualization
         stats_df = pd.DataFrame(stats_rows)
-        st.dataframe(stats_df, hide_index=True, use_container_width=True)
+        st.dataframe(
+            stats_df,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Name": st.column_config.TextColumn("Name", width="medium"),
+                "Shifts": st.column_config.ProgressColumn(
+                    "Shifts",
+                    min_value=0,
+                    max_value=max_shifts,
+                    format="%d",
+                ),
+            },
+        )
 
         # Fairness indicator
         counts = [r["Shifts"] for r in stats_rows]
@@ -1121,6 +1163,41 @@ def _count_live_load(roster):
                 counts[key]["count"] += 1
 
     return {info["display"]: info["count"] for info in counts.values()}
+
+
+# ---------------------------------------------------------------------------
+# Sidebar — session summary (always visible)
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.markdown("### COR Roster App")
+    st.caption("Church of the Redeemer")
+    st.divider()
+
+    ministry = st.session_state.ministry
+    if ministry:
+        st.markdown(f"**Ministry:** {ministry}")
+    else:
+        st.markdown("**Ministry:** —")
+
+    if st.session_state.start_ym and st.session_state.end_ym:
+        sy, sm = st.session_state.start_ym
+        ey, em = st.session_state.end_ym
+        import calendar as _cal
+        st.markdown(f"**Period:** {_cal.month_abbr[sm]} – {_cal.month_abbr[em]} {ey}")
+    else:
+        st.markdown("**Period:** —")
+
+    vol_count = len(st.session_state.volunteers) if st.session_state.volunteers else 0
+    st.markdown(f"**Volunteers:** {vol_count}")
+
+    svc_count = len(st.session_state.services) if st.session_state.services else 0
+    st.markdown(f"**Services:** {svc_count}")
+
+    st.divider()
+    current = st.session_state.stage
+    total = 5
+    if current > 0:
+        st.progress(current / total, text=f"Step {current} of {total}")
 
 
 # ---------------------------------------------------------------------------
