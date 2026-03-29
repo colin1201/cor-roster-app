@@ -857,15 +857,28 @@ def render_stage_5_roster():
         dates_in_month = month_dates[month_name]
         col_labels = [engine.format_date_col(d) for d in dates_in_month]
 
-        # Details row
-        details_row = {}
+        # Details row — separate editable text row above the roster grid
+        details_data = {}
         for d in dates_in_month:
             svc = next(s for s in services if s["date"] == d)
-            details_row[engine.format_date_col(d)] = engine.build_details_string(
+            details_data[engine.format_date_col(d)] = engine.build_details_string(
                 svc["hc"], svc["combined"], svc["notes"]
             )
+        details_df = pd.DataFrame({"Details": details_data}).T
+        details_df.index.name = "Role \\ Date"
 
-        grid_data = {"Details": details_row}
+        edited_details = st.data_editor(
+            details_df,
+            use_container_width=True,
+            key=f"details_editor_{month_name}",
+            column_config={
+                col: st.column_config.TextColumn(col)
+                for col in details_df.columns
+            },
+        )
+
+        # Roster grid — roles only, with dropdown names
+        grid_data = {}
         for role in display_roles:
             if role == "Details":
                 continue
@@ -877,7 +890,6 @@ def render_stage_5_roster():
         grid_df = pd.DataFrame(grid_data).T
         grid_df.index.name = "Role \\ Date"
 
-        # Build per-column dropdown options (available names for that date)
         col_config = {}
         for d in dates_in_month:
             col = engine.format_date_col(d)
@@ -894,7 +906,6 @@ def render_stage_5_roster():
             column_config=col_config,
             use_container_width=True,
             key=f"roster_editor_{month_name}",
-            disabled=["Details"] if "Details" in grid_df.index else [],
         )
 
         # Sync edits back to roster
