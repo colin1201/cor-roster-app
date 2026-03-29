@@ -269,6 +269,7 @@ def render_stage_1():
             if st.button("Reload from Google Sheet"):
                 data.clear_cache()
                 st.session_state.volunteers = None
+                st.session_state.session_rules = None  # Reset rules to pick up new columns
                 if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
                     vols, role_names = data.load_mt_volunteers()
                     st.session_state.volunteers = vols
