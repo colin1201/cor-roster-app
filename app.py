@@ -33,15 +33,40 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     /* Prominent next button */
     div[data-testid="stButton"] button[kind="primary"] {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         padding: 0.6rem 2rem;
     }
-    /* Details row styling in data editor */
-    .details-row { color: #64748b; font-style: italic; }
+    /* Month header banners */
+    .month-header-blue {
+        background: #1e293b; color: #ffffff; padding: 10px 16px;
+        font-weight: 600; font-size: 15px; border-radius: 8px 8px 0 0;
+        margin-top: 24px;
+    }
+    .month-header-slate {
+        background: #334155; color: #ffffff; padding: 10px 16px;
+        font-weight: 600; font-size: 15px; border-radius: 8px 8px 0 0;
+        margin-top: 24px;
+    }
+    /* Stage 0 cards */
+    .ministry-card {
+        text-align: center; padding: 24px 16px;
+        background: #f8fafc; border-radius: 12px;
+        border: 1px solid #e2e8f0; transition: all 0.2s;
+    }
+    .ministry-card:hover {
+        border-color: #2563eb; box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    .ministry-card .icon { font-size: 32px; margin-bottom: 8px; }
+    .ministry-card .name { font-weight: 600; font-size: 18px; color: #1e293b; }
+    .ministry-card .count { font-size: 13px; color: #94a3b8; margin-top: 4px; }
 </style>
 """, unsafe_allow_html=True)
+
+CHURCH_NAME = "Chapel of the Resurrection"
 
 # ---------------------------------------------------------------------------
 # Session State Initialization
@@ -154,11 +179,18 @@ def nav_buttons(current_stage: int, back_label="Back", next_label="Next", next_d
 # ---------------------------------------------------------------------------
 def render_stage_0():
     st.markdown("")
-    st.markdown("")
-    st.markdown("<h1 style='text-align: center;'>COR Roster App</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #64748b; font-size: 1.1rem;'>Church of the Redeemer — Volunteer Roster Generator</p>", unsafe_allow_html=True)
-    st.markdown("")
-    st.markdown("<h4 style='text-align: center;'>Which ministry are you from?</h4>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='text-align: center; color: #94a3b8; font-size: 13px; "
+        f"letter-spacing: 1px; text-transform: uppercase;'>{CHURCH_NAME}</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<h1 style='text-align: center; font-size: 2.5rem;'>COR Roster App</h1>", unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align: center; color: #64748b; font-size: 1.05rem; margin-bottom: 2rem;'>"
+        "Generate fair, rules-driven volunteer rosters</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<h4 style='text-align: center; color: #475569;'>Which ministry are you from?</h4>", unsafe_allow_html=True)
     st.markdown("")
 
     def _select_ministry(ministry):
@@ -181,10 +213,10 @@ def render_stage_0():
     _, col1, col2, _ = st.columns([1, 2, 2, 1])
     with col1:
         st.markdown(
-            "<div style='text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;'>"
-            "<div style='font-size: 2rem;'>⚙️</div>"
-            "<div style='font-weight: 600; margin-top: 0.5rem;'>Media Tech</div>"
-            "</div>",
+            '<div class="ministry-card">'
+            '<div class="icon">⚙️</div>'
+            '<div class="name">Media Tech</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
         if st.button("Select Media Tech", use_container_width=True, type="primary"):
@@ -192,10 +224,10 @@ def render_stage_0():
 
     with col2:
         st.markdown(
-            "<div style='text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;'>"
-            "<div style='font-size: 2rem;'>👋</div>"
-            "<div style='font-weight: 600; margin-top: 0.5rem;'>Welcome</div>"
-            "</div>",
+            '<div class="ministry-card">'
+            '<div class="icon">👋</div>'
+            '<div class="name">Welcome</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
         if st.button("Select Welcome", use_container_width=True, type="primary"):
@@ -818,8 +850,10 @@ def render_stage_5_roster():
     unavail_raw = st.session_state.unavailability or {}
     all_vol_names = sorted([v["name"] for v in volunteers])
 
-    for month_name in months_seen:
-        st.subheader(month_name)
+    for month_idx, month_name in enumerate(months_seen):
+        # Alternating coloured month headers
+        header_class = "month-header-blue" if month_idx % 2 == 0 else "month-header-slate"
+        st.markdown(f'<div class="{header_class}">{month_name}</div>', unsafe_allow_html=True)
         dates_in_month = month_dates[month_name]
         col_labels = [engine.format_date_col(d) for d in dates_in_month]
 
@@ -979,54 +1013,67 @@ def _render_load_stats(result, services):
             for name, count in sorted(live_load.items(), key=lambda x: (-x[1], x[0]))
         ]
         max_shifts = max(r["Shifts"] for r in stats_rows) if stats_rows else 1
-
-        # Styled load table with bar visualization
-        stats_df = pd.DataFrame(stats_rows)
-        st.dataframe(
-            stats_df,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Name": st.column_config.TextColumn("Name", width="medium"),
-                "Shifts": st.column_config.ProgressColumn(
-                    "Shifts",
-                    min_value=0,
-                    max_value=max_shifts,
-                    format="%d",
-                ),
-            },
-        )
-
-        # Fairness indicator
         counts = [r["Shifts"] for r in stats_rows]
-        if len(counts) > 1:
-            avg = sum(counts) / len(counts)
-            spread = max(counts) - min(counts)
+        total_shifts = sum(counts)
+        spread = max(counts) - min(counts) if len(counts) > 1 else 0
+
+        # Two-column layout: stats table + summary cards
+        stats_col, summary_col = st.columns([3, 1])
+
+        with stats_col:
+            stats_df = pd.DataFrame(stats_rows)
+            st.dataframe(
+                stats_df,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Name": st.column_config.TextColumn("Name", width="medium"),
+                    "Shifts": st.column_config.ProgressColumn(
+                        "Shifts",
+                        min_value=0,
+                        max_value=max_shifts,
+                        format="%d",
+                    ),
+                },
+            )
+
+        with summary_col:
+            # Fairness card
             if spread <= 1:
-                st.success("Load is well balanced")
+                st.success(f"Spread: {spread}")
+                st.caption("Well balanced")
             elif spread <= 2:
-                st.info("Load is fairly balanced")
+                st.info(f"Spread: {spread}")
+                st.caption("Fairly balanced")
             else:
-                st.warning(f"Load is uneven — spread of {spread} shifts between most and least active")
+                st.warning(f"Spread: {spread}")
+                st.caption("Uneven load")
 
-        # Bottleneck roles — flag roles with few qualified volunteers
-        if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
-            volunteers = st.session_state.volunteers
-            sr = st.session_state.get("session_rules") or {}
-            rc = sr.get("role_counts", {})
-            for role, count in rc.items():
-                if count == 0:
-                    continue
-                qualified = sum(1 for v in volunteers if v.get("roles", {}).get(role, False))
-                if qualified <= 4:
-                    st.caption(f"Note: Only {qualified} people are qualified for **{role}** — they will be scheduled more often")
+            st.metric("Total shifts", total_shifts)
 
-        # Unscheduled volunteers
-        all_vol_names = {v["name"] for v in st.session_state.volunteers}
-        scheduled_names = set(live_load.keys())
-        unscheduled = all_vol_names - scheduled_names
-        if unscheduled:
-            st.caption(f"Not scheduled: {', '.join(sorted(unscheduled))}")
+            # Unscheduled count
+            all_vol_names = {v["name"] for v in st.session_state.volunteers}
+            scheduled_names = set(live_load.keys())
+            unscheduled = all_vol_names - scheduled_names
+            st.metric("Unscheduled", len(unscheduled))
+            if unscheduled:
+                st.caption(", ".join(sorted(unscheduled)))
+
+            # Bottleneck roles
+            if st.session_state.ministry == rules.MINISTRY_MEDIA_TECH:
+                volunteers = st.session_state.volunteers
+                sr_rules = st.session_state.get("session_rules") or {}
+                rc = sr_rules.get("role_counts", {})
+                bottlenecks = []
+                for role, count in rc.items():
+                    if count == 0:
+                        continue
+                    qualified = sum(1 for v in volunteers if v.get("roles", {}).get(role, False))
+                    if qualified <= 4:
+                        bottlenecks.append(f"{role} ({qualified})")
+                if bottlenecks:
+                    st.warning("Bottleneck")
+                    st.caption(", ".join(bottlenecks))
 
         # Consecutive weeks detection
         _detect_consecutive_weeks(result["roster"], services)
@@ -1170,7 +1217,7 @@ def _count_live_load(roster):
 # ---------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("### COR Roster App")
-    st.caption("Church of the Redeemer")
+    st.caption(CHURCH_NAME)
     st.divider()
 
     ministry = st.session_state.ministry
@@ -1197,7 +1244,7 @@ with st.sidebar:
     current = st.session_state.stage
     total = 5
     if current > 0:
-        st.progress(current / total, text=f"Step {current} of {total}")
+        st.progress(current / total, text=f"Step {current} of {total} — {STAGE_LABELS[current]}")
 
 
 # ---------------------------------------------------------------------------
