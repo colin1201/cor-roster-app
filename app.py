@@ -650,8 +650,27 @@ def render_stage_4_unavail():
     date_options = [d.isoformat() for d in service_dates]
     date_display = {d.isoformat(): engine.format_date_col(d) for d in service_dates}
 
-    # Per-person multiselect — much more compact than a checkbox grid
-    # Two columns to use space efficiently
+    # "Mark all dates" shortcut
+    mark_col1, mark_col2 = st.columns([3, 1])
+    with mark_col1:
+        mark_all_person = st.selectbox(
+            "Quick: mark someone unavailable for ALL dates",
+            options=[""] + vol_names,
+            key="mark_all_person",
+        )
+    with mark_col2:
+        st.write("")
+        st.write("")
+        if st.button("Mark all dates", key="mark_all_btn"):
+            if mark_all_person:
+                st.session_state[f"unavail_{mark_all_person}"] = list(date_options)
+                st.rerun()
+
+    st.divider()
+
+    # Per-person multiselect — two columns
+    # format_func uses date_display dict (defined once, safe for closure)
+    _fmt = lambda x: date_display.get(x, x)
     col_left, col_right = st.columns(2)
     for i, name in enumerate(vol_names):
         target_col = col_left if i % 2 == 0 else col_right
@@ -659,7 +678,7 @@ def render_stage_4_unavail():
             st.multiselect(
                 name,
                 options=date_options,
-                format_func=lambda x: date_display.get(x, x),
+                format_func=_fmt,
                 key=f"unavail_{name}",
             )
 
@@ -1032,9 +1051,16 @@ def _render_stage_5_nav():
             st.session_state.roster = None
             st.rerun()
     with cols[2]:
-        if st.button("Start Over"):
-            reset_all()
-            st.rerun()
+        confirm_key = "confirm_restart_5"
+        if st.session_state.get(confirm_key):
+            if st.button("Confirm reset?", key="restart2_5", type="primary"):
+                st.session_state[confirm_key] = False
+                reset_all()
+                st.rerun()
+        else:
+            if st.button("Start Over", key="restart_5"):
+                st.session_state[confirm_key] = True
+                st.rerun()
 
     # CSV Export + Google Sheets copy
     if result and services:
