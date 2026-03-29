@@ -377,13 +377,22 @@ def render_stage_2():
         st.markdown("How many people are needed for each tech role per service?")
 
         role_counts = sr.get("role_counts", {})
-        rc_cols = st.columns(len(role_counts))
-        for i, (role, default_count) in enumerate(role_counts.items()):
-            with rc_cols[i]:
-                role_counts[role] = st.number_input(
-                    role, min_value=0, max_value=5, value=default_count,
-                    key=f"rule_rc_{role}",
-                )
+
+        # Display roles from Google Sheet in a grid
+        if role_counts:
+            max_cols = min(len(role_counts), 4)
+            for chunk_start in range(0, len(role_counts), max_cols):
+                chunk = list(role_counts.items())[chunk_start:chunk_start + max_cols]
+                rc_cols = st.columns(max_cols)
+                for i, (role, default_count) in enumerate(chunk):
+                    with rc_cols[i]:
+                        role_counts[role] = st.number_input(
+                            role, min_value=0, max_value=5, value=default_count,
+                            key=f"rule_rc_{role}",
+                            help="Set to 0 to make this a manual-only placeholder",
+                        )
+
+        st.caption("Roles are read from your Google Sheet column headers. To add a new role, add a column to the sheet and reload volunteers in Stage 1.")
         sr["role_counts"] = role_counts
 
         st.divider()
