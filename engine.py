@@ -321,11 +321,17 @@ def generate_mt_roster(
         assigned_today: Set[str] = set()
         day_roster: Dict[str, str] = {}
 
-        # Pre-populate locked cells
+        # Pre-populate locked cells — and count them toward load so
+        # lock-and-regenerate keeps fairness (bug fix: locked cells were free before).
         for role, name in locked.items():
             if name:
                 day_roster[role] = name
                 assigned_today.add(name)
+                if role == lead_role_name:
+                    # MT5: lead does NOT count toward shift load, only lead_counts
+                    lead_counts[name] = lead_counts.get(name, 0) + 1
+                else:
+                    load_counts[name] = load_counts.get(name, 0) + 1
 
         unavail = unavailability.get(d, set())
 
@@ -515,11 +521,16 @@ def generate_welcome_roster(
     hc_member_count = session_rules.get("hc_member_count", rules.W_HC_MEMBER_COUNT)
     non_hc_member_count = session_rules.get("non_hc_member_count", rules.W_NON_HC_MEMBER_COUNT)
 
-    couple_map = _build_couple_map(volunteers) if use_couples_together else {}
-
     # Separate lead and member pools (strict separation — rule W4)
     lead_pool = [v for v in volunteers if v["lead"]]
     member_pool = [v for v in volunteers if v["member"]]
+
+    # Couples rules apply to members ONLY (rule W7 — leads are exempt).
+    # Build the couple map from the member pool so a member cannot drag a
+    # lead partner into a member slot, and a member whose partner is a lead
+    # is not blocked by that lead's availability.
+    member_names = {v["name"] for v in member_pool}
+    couple_map = _build_couple_map(member_pool) if use_couples_together else {}
 
     # Build name lookup
     vol_by_name = {v["name"]: v for v in volunteers}
@@ -550,11 +561,16 @@ def generate_welcome_roster(
         member_count = hc_member_count if is_hc else non_hc_member_count
         member_roles = [f"Member {i}" for i in range(1, member_count + 1)]
 
-        # Pre-populate locked cells
+        # Pre-populate locked cells — and count them toward load so
+        # lock-and-regenerate keeps fairness. Welcome counts ALL roles
+        # including the lead (rule W10).
         for role, name in locked.items():
             if name:
                 day_roster[role] = name
                 assigned_today.add(name)
+                load_counts[name] = load_counts.get(name, 0) + 1
+                if role == rules.W_LEAD_ROLE:
+                    lead_counts[name] = lead_counts.get(name, 0) + 1
 
         unavail = unavailability.get(d, set())
 
@@ -639,9 +655,12 @@ def generate_welcome_roster(
             assigned_today.add(name)
             load_counts[name] = load_counts.get(name, 0) + 1
 
-            # Couple magnet: auto-assign partner to next empty slot
+            # Couple magnet: auto-assign partner to next empty slot.
+            # Guard: only a member-pool partner may be pulled into a member slot
+            # (rule W7 — a lead partner is never dragged in).
             partner = couple_map.get(name)
-            if partner and partner not in assigned_today and partner not in unavail:
+            if (partner and partner in member_names
+                    and partner not in assigned_today and partner not in unavail):
                 next_slot = _next_empty_member_slot()
                 if next_slot:
                     day_roster[next_slot] = partner
@@ -736,9 +755,14 @@ def generate_welcome_roster(
                 warnings.append({"date": d, "role": slot, "message": "No member available"})
                 break
 
-        # Fill any remaining empty slots (non-HC Member 4)
-        if not is_hc:
-            day_roster["Member 4"] = ""
+        # Blank any member slots beyond this service's member count so the
+        # display grid shows them empty (e.g. non-HC has fewer members than HC).
+        # Derived from the session rules, not a hardcoded "Member 4", and a
+        # locked slot is never blanked.
+        for i in range(member_count + 1, hc_member_count + 1):
+            role = f"Member {i}"
+            if role not in locked:
+                day_roster[role] = ""
 
         roster[d] = day_roster
         assignments_by_date[d] = assigned_today.copy()
