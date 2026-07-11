@@ -83,6 +83,7 @@ DEFAULTS = {
     "prev_quarter_data": None, # {load_counts, last_week_crew} from previous CSV
     "roster": None,          # generated roster data
     "original_roster": None, # for undo/reset
+    "generation_id": 0,      # bumped on every (re)generate; salts Stage-5 widget keys
 }
 
 for key, val in DEFAULTS.items():
@@ -726,6 +727,18 @@ def render_stage_4_unavail():
 
     st.divider()
 
+    # Seed defaults from the saved unavailability dict so that navigating Back
+    # into this stage restores prior selections. Streamlit deletes unrendered
+    # widget state, so on re-entry the `unavail_{name}` keys are gone — without
+    # a default the dict would be rebuilt from empty widgets and wiped.
+    saved_unavail = st.session_state.unavailability or {}
+    name_to_dates = {}
+    for d_str, names in saved_unavail.items():
+        if d_str not in date_options:
+            continue  # service date no longer exists — drop it
+        for n in names:
+            name_to_dates.setdefault(n, []).append(d_str)
+
     # Per-person multiselect — two columns
     # format_func uses date_display dict (defined once, safe for closure)
     _fmt = lambda x: date_display.get(x, x)
@@ -733,11 +746,18 @@ def render_stage_4_unavail():
     for i, name in enumerate(vol_names):
         target_col = col_left if i % 2 == 0 else col_right
         with target_col:
+            widget_key = f"unavail_{name}"
+            # Only pass `default` when the widget has no live state yet; passing
+            # both a default and an existing session value triggers a warning.
+            kwargs = {}
+            if widget_key not in st.session_state:
+                kwargs["default"] = name_to_dates.get(name, [])
             st.multiselect(
                 name,
                 options=date_options,
                 format_func=_fmt,
-                key=f"unavail_{name}",
+                key=widget_key,
+                **kwargs,
             )
 
     # Build unavailability dict from multiselect keys
@@ -806,8 +826,12 @@ def render_stage_5_roster():
         st.session_state.original_roster = {
             d: dict(roles) for d, roles in result["roster"].items()
         }
+        # New generation → new widget-key generation so stale data_editor
+        # edit-deltas and lock selections from the previous roster can't bleed in.
+        st.session_state.generation_id += 1
 
     result = st.session_state.roster
+    gen_id = st.session_state.generation_id
 
     # Show warnings
     if result.get("warnings"):
@@ -870,12 +894,29 @@ def render_stage_5_roster():
         edited_details = st.data_editor(
             details_df,
             use_container_width=True,
-            key=f"details_editor_{month_name}",
+            key=f"details_editor_{month_name}_{gen_id}",
             column_config={
                 col: st.column_config.TextColumn(col)
                 for col in details_df.columns
             },
         )
+
+        # Sync Details edits back into each service's notes so the CSV export
+        # (which rebuilds Details from hc/combined/notes) keeps the leader's text.
+        # The auto-portion ("Combined / HC") is stripped so it isn't duplicated
+        # when the export re-prepends it.
+        for d in dates_in_month:
+            col = engine.format_date_col(d)
+            if "Details" not in edited_details.index or col not in edited_details.columns:
+                continue
+            svc = next(s for s in services if s["date"] == d)
+            new_val = edited_details.loc["Details", col]
+            new_details = str(new_val).strip() if new_val is not None else ""
+            auto_prefix = engine.build_details_string(svc["hc"], svc["combined"], "")
+            if auto_prefix and new_details.startswith(auto_prefix):
+                svc["notes"] = new_details[len(auto_prefix):].lstrip(" /").strip()
+            else:
+                svc["notes"] = new_details
 
         # Roster grid — roles only, with dropdown names
         grid_data = {}
@@ -905,7 +946,7 @@ def render_stage_5_roster():
             grid_df,
             column_config=col_config,
             use_container_width=True,
-            key=f"roster_editor_{month_name}",
+            key=f"roster_editor_{month_name}_{gen_id}",
         )
 
         # Sync edits back to roster
@@ -920,7 +961,7 @@ def render_stage_5_roster():
 
     # Lock-and-regenerate
     st.divider()
-    _render_lock_and_regen(result, services, volunteers, unavailability, display_roles)
+    _render_lock_and_regen(result, services, volunteers, unavailability, display_roles, gen_id)
 
     # Reset to generated values
     if st.session_state.original_roster:
@@ -939,10 +980,10 @@ def render_stage_5_roster():
 
     # Navigation
     st.divider()
-    _render_stage_5_nav()
+    _render_stage_5_nav(display_roles)
 
 
-def _render_lock_and_regen(result, services, volunteers, unavailability, display_roles):
+def _render_lock_and_regen(result, services, volunteers, unavailability, display_roles, gen_id):
     """Lock-and-regenerate: leader locks cells, regenerates the rest."""
     with st.expander("Lock & Regenerate"):
         st.markdown("Select cells to **lock**, then regenerate. Locked cells stay; everything else gets reassigned.")
@@ -974,7 +1015,7 @@ def _render_lock_and_regen(result, services, volunteers, unavailability, display
                     st.multiselect(
                         engine.format_date_col(d),
                         options=lockable,
-                        key=f"lock_{d_key}",
+                        key=f"lock_{d_key}_{gen_id}",
                     )
 
         if st.button("Regenerate (keep locked cells)", type="primary"):
@@ -982,7 +1023,7 @@ def _render_lock_and_regen(result, services, volunteers, unavailability, display
             locked = {}
             for d in service_dates:
                 d_key = d.isoformat()
-                selected = st.session_state.get(f"lock_{d_key}", [])
+                selected = st.session_state.get(f"lock_{d_key}_{gen_id}", [])
                 if selected:
                     locked[d] = {}
                     for item in selected:
@@ -1011,6 +1052,8 @@ def _render_lock_and_regen(result, services, volunteers, unavailability, display
             st.session_state.original_roster = {
                 d: dict(roles) for d, roles in new_result["roster"].items()
             }
+            # New generation → fresh widget keys (see initial-generation note)
+            st.session_state.generation_id += 1
             st.rerun()
 
 
@@ -1109,7 +1152,8 @@ def _detect_consecutive_weeks(roster, services):
         else:
             counted_roles = list(rules.MT_TECH_ROLES)
     else:
-        counted_roles = [rules.W_LEAD_ROLE] + [f"Member {i}" for i in range(1, 5)]
+        max_members = _welcome_member_count()
+        counted_roles = [rules.W_LEAD_ROLE] + [f"Member {i}" for i in range(1, max_members + 1)]
 
     # Build per-date crew
     date_crews = {}
@@ -1136,7 +1180,7 @@ def _detect_consecutive_weeks(roster, services):
         st.warning(f"Serving consecutive weeks: {', '.join(names)}")
 
 
-def _render_stage_5_nav():
+def _render_stage_5_nav(display_roles=None):
     """Navigation buttons and export for Stage 5."""
     result = st.session_state.roster
     services = st.session_state.services
@@ -1170,6 +1214,7 @@ def _render_stage_5_nav():
             services,
             st.session_state.ministry,
             live_load,
+            role_order=display_roles,
         )
         ministry_slug = st.session_state.ministry.lower().replace(" ", "_")
         with cols[3]:
@@ -1194,6 +1239,17 @@ def _render_stage_5_nav():
             )
 
 
+def _welcome_member_count():
+    """Max member slots in play, derived from session rules (matches display).
+    Ensures Member 5+ assignments aren't invisible to load stats/warnings."""
+    sr = st.session_state.get("session_rules") or {}
+    services = st.session_state.services or []
+    has_hc = any(s.get("hc") for s in services)
+    if has_hc:
+        return sr.get("hc_member_count", rules.W_HC_MEMBER_COUNT)
+    return sr.get("non_hc_member_count", rules.W_NON_HC_MEMBER_COUNT)
+
+
 def _count_live_load(roster):
     """Recount load from current roster state (supports manual edits)."""
     ministry = st.session_state.ministry
@@ -1208,7 +1264,8 @@ def _count_live_load(roster):
         else:
             counted_roles = list(rules.MT_TECH_ROLES)
     else:
-        counted_roles = [rules.W_LEAD_ROLE] + [f"Member {i}" for i in range(1, 5)]
+        max_members = _welcome_member_count()
+        counted_roles = [rules.W_LEAD_ROLE] + [f"Member {i}" for i in range(1, max_members + 1)]
 
     counts = {}
     for d_roster in roster.values():
