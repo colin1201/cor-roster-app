@@ -19,10 +19,16 @@ def roster_to_csv(
     services: List[Dict],
     ministry: str,
     load_counts: Dict[str, int],
+    role_order: List[str] = None,
 ) -> str:
     """
     Generate CSV string matching the screenshot format.
     Monthly blocks + load stats at bottom.
+
+    role_order: optional explicit role row order (the app's display_roles, in
+    sheet-header order). When given, the CSV rows follow it exactly so the
+    export pastes straight into the Google Sheet. When omitted, roles are
+    ordered by the fallback logic below.
     """
     lines = []
     service_dates = sorted(roster.keys())
@@ -44,7 +50,14 @@ def roster_to_csv(
     # Remove "Details" if present, and sort with a stable order
     all_roles.discard("Details")
 
-    if ministry == rules.MINISTRY_MEDIA_TECH:
+    if role_order is not None:
+        # Follow the app's display order exactly; append any roster roles that
+        # aren't in the supplied order (safety) so nothing is dropped.
+        display_roles = [r for r in role_order if r != "Details"]
+        for r in sorted(all_roles):
+            if r not in display_roles:
+                display_roles.append(r)
+    elif ministry == rules.MINISTRY_MEDIA_TECH:
         # Order: tech roles first (sorted), then lead at the end
         lead_role = None
         tech_roles = []

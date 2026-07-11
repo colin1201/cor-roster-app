@@ -6,6 +6,7 @@ Handles all Google Sheets I/O. No Streamlit imports.
 
 import io
 import re
+import time
 from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
@@ -44,7 +45,14 @@ def _find_column(df: pd.DataFrame, target: str) -> Optional[str]:
     return None
 
 
-_sheet_cache: Dict[str, pd.DataFrame] = {}
+# Cached entries expire after this many seconds. The Google Sheet is the
+# master list (see CLAUDE.md — qualifications are never cached across reloads);
+# on Streamlit Cloud a module-level cache can otherwise survive for weeks
+# across sessions and silently serve stale volunteer data.
+CACHE_TTL_SECONDS = 600
+
+# cache_key -> (fetched_at_epoch, DataFrame)
+_sheet_cache: Dict[str, Tuple[float, pd.DataFrame]] = {}
 
 
 def clear_cache():
@@ -53,10 +61,12 @@ def clear_cache():
 
 
 def fetch_sheet(sheet_id: str, gid: str, use_cache: bool = True) -> pd.DataFrame:
-    """Fetch a Google Sheet tab as a DataFrame. Cached per session."""
+    """Fetch a Google Sheet tab as a DataFrame. Cached for CACHE_TTL_SECONDS."""
     cache_key = f"{sheet_id}_{gid}"
     if use_cache and cache_key in _sheet_cache:
-        return _sheet_cache[cache_key].copy()
+        fetched_at, cached_df = _sheet_cache[cache_key]
+        if time.time() - fetched_at < CACHE_TTL_SECONDS:
+            return cached_df.copy()
 
     url = build_csv_url(sheet_id, gid)
     response = requests.get(url, timeout=30)
@@ -65,7 +75,7 @@ def fetch_sheet(sheet_id: str, gid: str, use_cache: bool = True) -> pd.DataFrame
     # Strip whitespace from column headers
     df.columns = [str(c).strip() for c in df.columns]
 
-    _sheet_cache[cache_key] = df
+    _sheet_cache[cache_key] = (time.time(), df)
     return df.copy()
 
 
