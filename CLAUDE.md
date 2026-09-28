@@ -8,7 +8,9 @@
 - `export.py` — CSV formatting. No Streamlit imports.
 
 ## Testing
-- Run tests: `pytest tests/ -v`
+- Run unit tests: `pytest tests/test_*.py -v` — plain `pytest tests/` crashes, because it also collects `full_flow_test.py`/`comprehensive_test.py`, which are scripts that call `sys.exit`
+- Integration script (reads the LIVE sheet): `PYTHONPATH=. python tests/full_flow_test.py`. Its sheet-size checks are floors (≥18 vols, ≥5 roles), never exact counts — the sheet grows and an exact count fails like a code regression
+- Live check: Playwright into the `iframe[title="streamlitApp"]`; the primary button (`stBaseButton-primary`) advances each stage. The grid is canvas-rendered, so read results by screenshot or by alert text, not cell text
 - Every rule in RULES.md must have a corresponding test
 - Tests use mocked data (no network calls in tests)
 - Write tests BEFORE engine code for critical rules (especially MT lead logic)
@@ -24,6 +26,8 @@ The lead logic was wrong in BOTH previous prototypes. The correct logic is:
 ## Google Sheet is the Master List
 The Google Sheet is the single source of truth for volunteers and roles. The app MUST always reflect the current state of the sheet:
 - Roles come from sheet column headers — never hardcoded in the app
+- **Row ORDER comes from the sheet too** — the roster and CSV follow the Media Tech sheet's columns left to right, lead included (`engine.order_mt_display_roles`). Admins reorder by moving columns. When Colin asks for a new order, the fix is moving the sheet columns, not an order list in code. 28 Sep 2026 I shipped a hardcoded order list first and he had to ask for it to follow the sheet ("so that future admin members can edit the order")
+- Clash warning (Stage 5, red box): lists anyone rostered on a date they marked unavailable, generated or hand-edited. Warning only. Needed because Back → change unavailability → Next keeps the OLD roster until Regenerate
 - Volunteer qualifications come from the sheet — never cached across reloads
 - When volunteers are reloaded, ALL downstream state must reset (session_rules, services, unavailability, roster) to prevent stale data
 - Never store sheet-derived data that could go stale without a clear reload path
