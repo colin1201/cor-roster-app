@@ -38,6 +38,17 @@ MT_ROLES_DISPLAY = [
     "Media Team Lead",
 ]
 
+# Row order Colin wants on screen and in the CSV (28 Sep 2026). Matched
+# case-insensitively against the sheet's role headers. Extra slots ("Projection 2")
+# follow their base role; roles not listed here go after these; lead is always last.
+MT_DISPLAY_PRIORITY = [
+    "Sound",
+    "Projection",
+    "Stream Director",
+    "Camera 1",
+    "Livestream sound",
+]
+
 # ---------------------------------------------------------------------------
 # Media Tech — Lead Logic
 # ---------------------------------------------------------------------------

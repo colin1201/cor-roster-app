@@ -105,6 +105,44 @@ def format_date_col(d: date) -> str:
     return d.strftime("%d-%b")
 
 
+def order_mt_display_roles(role_slots: List[str], lead_role: str) -> List[str]:
+    """
+    Sort Media Tech role rows into rules.MT_DISPLAY_PRIORITY order.
+    Numbered slots ("Projection 2") stay right after their base role; unlisted
+    roles keep their sheet order after the listed ones; lead goes last.
+    """
+    bases = set(role_slots)
+    priority = {r.lower(): i for i, r in enumerate(rules.MT_DISPLAY_PRIORITY)}
+
+    def base_of(slot: str) -> str:
+        head, _, tail = slot.rpartition(" ")
+        if tail.isdigit() and head in bases:
+            return head
+        return slot
+
+    indexed = list(enumerate(r for r in role_slots if r != lead_role))
+    indexed.sort(key=lambda x: (priority.get(base_of(x[1]).lower(), len(priority)), x[0]))
+    return [r for _, r in indexed] + [lead_role]
+
+
+def unavailable_dates_by_person(
+    unavailability: Dict[str, Set[str]], service_dates: List[date]
+) -> Dict[str, List[date]]:
+    """
+    Flip {iso_date -> names} into {name -> sorted dates}, keeping only dates in
+    this roster. Name keys are lowercased so they match however the roster spells them.
+    """
+    wanted = {d.isoformat(): d for d in service_dates}
+    out: Dict[str, List[date]] = {}
+    for d_str, names in (unavailability or {}).items():
+        d = wanted.get(d_str)
+        if d is None:
+            continue
+        for n in names:
+            out.setdefault(n.strip().lower(), []).append(d)
+    return {k: sorted(v) for k, v in out.items()}
+
+
 # ---------------------------------------------------------------------------
 # Scheduling Primitives (shared by both ministries)
 # ---------------------------------------------------------------------------

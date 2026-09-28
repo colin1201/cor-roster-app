@@ -68,3 +68,37 @@ def test_csv_welcome_roles():
     assert "Welcome Team Lead" in csv
     assert "Member 1" in csv
     assert "Member 4" in csv
+
+
+def test_mt_display_order_matches_colin_order():
+    import engine
+    slots = ["Stream Director", "Camera 1", "Projection", "Projection 2", "Sound", "Livestream sound", "Cam 2"]
+    out = engine.order_mt_display_roles(slots, "Media Team Lead")
+    assert out == ["Sound", "Projection", "Projection 2", "Stream Director", "Camera 1",
+                   "Livestream sound", "Cam 2", "Media Team Lead"]
+
+
+def test_mt_display_order_case_insensitive_and_unknown_roles_kept():
+    import engine
+    out = engine.order_mt_display_roles(["Camera 1", "Photographer", "Livestream Sound", "sound"], "Lead")
+    assert out == ["sound", "Camera 1", "Livestream Sound", "Photographer", "Lead"]
+
+
+def test_csv_load_stats_include_unavailable_dates_and_zero_shift_people():
+    import engine
+    roster = {
+        date(2026, 11, 1): {"Sound": "Ben", "Media Team Lead": "Ben"},
+        date(2026, 11, 8): {"Sound": "Micah", "Media Team Lead": ""},
+    }
+    services = [{"date": d, "hc": False, "combined": False, "notes": ""} for d in roster]
+    unavail = engine.unavailable_dates_by_person(
+        {"2026-11-08": {"Ben", "Zoe"}, "2026-11-01": {"Zoe"}, "2027-01-03": {"Ben"}},
+        list(roster.keys()),
+    )
+    csv = export.roster_to_csv(roster, services, rules.MINISTRY_MEDIA_TECH,
+                               {"Ben": 1, "Micah": 1}, unavailable=unavail,
+                               all_names=["Ben", "Micah", "Zoe"])
+    assert "Name,Shifts,Unavailable dates" in csv
+    assert "Ben,1,08-Nov" in csv          # out-of-roster date dropped
+    assert "Micah,1," in csv
+    assert 'Zoe,0,"01-Nov, 08-Nov"' in csv  # 0-shift person listed, dates sorted

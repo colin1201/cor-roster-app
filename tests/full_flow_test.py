@@ -19,8 +19,9 @@ print("--- MEDIA TECH FLOW ---")
 
 print("Stage 0: Load volunteers")
 mt_vols, mt_roles = data.load_mt_volunteers()
-check(len(mt_vols) == 18, f"18 MT volunteers (got {len(mt_vols)})")
-check(len(mt_roles) == 5, f"5 MT roles (got {len(mt_roles)})")
+# Live sheet grows over time — assert a floor, not an exact count (19 vols / 6 roles on 28 Sep 2026).
+check(len(mt_vols) >= 18, f"at least 18 MT volunteers (got {len(mt_vols)})")
+check(len(mt_roles) >= 5, f"at least 5 MT roles (got {len(mt_roles)})")
 
 print("Stage 1: Select dates Apr-Jun 2026")
 sundays = engine.get_sundays_in_range(2026, 4, 2026, 6)

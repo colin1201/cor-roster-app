@@ -863,7 +863,7 @@ def render_stage_5_roster():
             for i in range(count):
                 auto_slots.append(role if i == 0 else f"{role} {i + 1}")
         manual_slots = [r for r, c in role_counts.items() if c == 0]
-        display_roles = auto_slots + manual_slots + [lead_role_name]
+        display_roles = engine.order_mt_display_roles(auto_slots + manual_slots, lead_role_name)
     else:
         sr = st.session_state.session_rules or {}
         has_hc = any(s.get("hc") for s in services)
@@ -1062,12 +1062,29 @@ def _render_load_stats(result, services):
     live_load = _count_live_load(result["roster"])
 
     if live_load:
+        # Everyone on the list, including 0-shift people, with their unavailable
+        # dates beside the count — so manual edits can see who is free in one place.
+        unavail_by_person = engine.unavailable_dates_by_person(
+            st.session_state.unavailability, [s["date"] for s in services]
+        )
+        full_load = dict(live_load)
+        seen = {n.lower() for n in live_load}
+        for v in st.session_state.volunteers:
+            if v["name"].lower() not in seen:
+                full_load[v["name"]] = 0
         stats_rows = [
-            {"Name": name, "Shifts": count}
-            for name, count in sorted(live_load.items(), key=lambda x: (-x[1], x[0]))
+            {
+                "Name": name,
+                "Shifts": count,
+                "Unavailable": ", ".join(
+                    engine.format_date_col(d) for d in unavail_by_person.get(name.strip().lower(), [])
+                ) or "—",
+            }
+            for name, count in sorted(full_load.items(), key=lambda x: (-x[1], x[0].lower()))
         ]
         max_shifts = max(r["Shifts"] for r in stats_rows) if stats_rows else 1
-        counts = [r["Shifts"] for r in stats_rows]
+        # Spread measures fairness among people actually rostered, as before.
+        counts = list(live_load.values())
         total_shifts = sum(counts)
         spread = max(counts) - min(counts) if len(counts) > 1 else 0
 
@@ -1088,6 +1105,7 @@ def _render_load_stats(result, services):
                         max_value=max_shifts,
                         format="%d",
                     ),
+                    "Unavailable": st.column_config.TextColumn("Unavailable dates", width="large"),
                 },
             )
 
@@ -1215,6 +1233,10 @@ def _render_stage_5_nav(display_roles=None):
             st.session_state.ministry,
             live_load,
             role_order=display_roles,
+            unavailable=engine.unavailable_dates_by_person(
+                st.session_state.unavailability, [s["date"] for s in services]
+            ),
+            all_names=[v["name"] for v in st.session_state.volunteers],
         )
         ministry_slug = st.session_state.ministry.lower().replace(" ", "_")
         with cols[3]:

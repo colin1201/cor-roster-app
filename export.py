@@ -20,6 +20,8 @@ def roster_to_csv(
     ministry: str,
     load_counts: Dict[str, int],
     role_order: List[str] = None,
+    unavailable: Dict[str, List[date]] = None,
+    all_names: List[str] = None,
 ) -> str:
     """
     Generate CSV string matching the screenshot format.
@@ -109,14 +111,28 @@ def roster_to_csv(
 
     # Load statistics
     lines.append("Load Statistics")
-    lines.append(_csv_row(["Name", "Shifts"]))
-
-    sorted_load = sorted(
-        [(name, count) for name, count in load_counts.items() if count > 0],
-        key=lambda x: (-x[1], x[0]),
-    )
-    for name, count in sorted_load:
-        lines.append(_csv_row([name, str(count)]))
+    if unavailable is None:
+        lines.append(_csv_row(["Name", "Shifts"]))
+        sorted_load = sorted(
+            [(name, count) for name, count in load_counts.items() if count > 0],
+            key=lambda x: (-x[1], x[0]),
+        )
+        for name, count in sorted_load:
+            lines.append(_csv_row([name, str(count)]))
+    else:
+        # Everyone (0-shift people too) with their unavailable dates beside the count.
+        full = {n: c for n, c in load_counts.items() if c > 0}
+        seen = {n.lower() for n in full}
+        for n in all_names or []:
+            if n.lower() not in seen:
+                full[n] = 0
+                seen.add(n.lower())
+        lines.append(_csv_row(["Name", "Shifts", "Unavailable dates"]))
+        for name, count in sorted(full.items(), key=lambda x: (-x[1], x[0].lower())):
+            dates = unavailable.get(name.strip().lower(), [])
+            lines.append(_csv_row([
+                name, str(count), ", ".join(engine.format_date_col(d) for d in dates),
+            ]))
 
     return "\n".join(lines)
 
