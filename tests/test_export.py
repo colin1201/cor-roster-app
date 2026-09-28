@@ -70,18 +70,39 @@ def test_csv_welcome_roles():
     assert "Member 4" in csv
 
 
-def test_mt_display_order_matches_colin_order():
+def test_mt_display_order_follows_sheet_columns():
     import engine
+    sheet = ["Sound", "Projection", "Stream Director", "Camera 1", "Livestream sound", "Media Team Lead"]
     slots = ["Stream Director", "Camera 1", "Projection", "Projection 2", "Sound", "Livestream sound", "Cam 2"]
-    out = engine.order_mt_display_roles(slots, "Media Team Lead")
+    out = engine.order_mt_display_roles(slots, "Media Team Lead", sheet_order=sheet)
     assert out == ["Sound", "Projection", "Projection 2", "Stream Director", "Camera 1",
-                   "Livestream sound", "Cam 2", "Media Team Lead"]
+                   "Livestream sound", "Media Team Lead", "Cam 2"]
 
 
-def test_mt_display_order_case_insensitive_and_unknown_roles_kept():
+def test_mt_display_order_lead_keeps_its_sheet_position():
     import engine
-    out = engine.order_mt_display_roles(["Camera 1", "Photographer", "Livestream Sound", "sound"], "Lead")
-    assert out == ["sound", "Camera 1", "Livestream Sound", "Photographer", "Lead"]
+    sheet = ["Media Team Lead", "Camera 1", "sound"]
+    out = engine.order_mt_display_roles(["Sound", "Camera 1"], "Media Team Lead", sheet_order=sheet)
+    assert out == ["Media Team Lead", "Camera 1", "Sound"]
+
+
+def test_mt_display_order_without_sheet_puts_lead_last():
+    import engine
+    out = engine.order_mt_display_roles(["Camera 1", "Sound"], "Lead")
+    assert out == ["Camera 1", "Sound", "Lead"]
+
+
+def test_unavailability_clashes_found_including_manual_edits_and_lead():
+    import engine
+    d1, d2 = date(2026, 10, 4), date(2026, 10, 11)
+    roster = {
+        d1: {"Details": "Alan", "Sound": "Alan", "Media Team Lead": "ben"},
+        d2: {"Sound": "Alan", "Media Team Lead": ""},
+    }
+    unavail = {d1: {"Alan", "Ben"}, d2: set()}
+    out = engine.find_unavailability_clashes(roster, unavail)
+    assert out == [("Alan", d1, "Sound"), ("ben", d1, "Media Team Lead")]
+    assert engine.find_unavailability_clashes(roster, {}) == []
 
 
 def test_csv_load_stats_include_unavailable_dates_and_zero_shift_people():

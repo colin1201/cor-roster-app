@@ -839,6 +839,10 @@ def render_stage_5_roster():
             for w in result["warnings"]:
                 st.warning(f"**{w['date'].strftime('%d-%b')}** — {w['role']}: {w['message']}")
 
+    # Clash warning slot — filled after the grids below have synced this run's
+    # manual edits, so it reflects exactly what is on screen.
+    clash_slot = st.empty()
+
     # Display roster grouped by month
     service_dates = [s["date"] for s in services]
     months_seen = []
@@ -863,7 +867,10 @@ def render_stage_5_roster():
             for i in range(count):
                 auto_slots.append(role if i == 0 else f"{role} {i + 1}")
         manual_slots = [r for r, c in role_counts.items() if c == 0]
-        display_roles = engine.order_mt_display_roles(auto_slots + manual_slots, lead_role_name)
+        display_roles = engine.order_mt_display_roles(
+            auto_slots + manual_slots, lead_role_name,
+            sheet_order=st.session_state.get("mt_role_names"),
+        )
     else:
         sr = st.session_state.session_rules or {}
         has_hc = any(s.get("hc") for s in services)
@@ -958,6 +965,19 @@ def render_stage_5_roster():
                 if role in edited_grid.index and col in edited_grid.columns:
                     new_val = edited_grid.loc[role, col]
                     result["roster"][d][role] = str(new_val).strip() if new_val else ""
+
+    # Someone on the roster for a date they marked unavailable — e.g. dates changed
+    # after the roster was generated (Back → edit → Next keeps the old roster).
+    clashes = engine.find_unavailability_clashes(result["roster"], unavailability)
+    if clashes:
+        lines = "\n".join(
+            f"- **{name}**: rostered as {role} on {engine.format_date_col(d)} but marked unavailable"
+            for name, d, role in clashes
+        )
+        clash_slot.error(
+            f"**{len(clashes)} clash{'es' if len(clashes) != 1 else ''}** — "
+            f"swap these people, or press Regenerate.\n\n{lines}"
+        )
 
     # Lock-and-regenerate
     st.divider()

@@ -105,14 +105,23 @@ def format_date_col(d: date) -> str:
     return d.strftime("%d-%b")
 
 
-def order_mt_display_roles(role_slots: List[str], lead_role: str) -> List[str]:
+def order_mt_display_roles(
+    role_slots: List[str], lead_role: str, sheet_order: Optional[List[str]] = None
+) -> List[str]:
     """
-    Sort Media Tech role rows into rules.MT_DISPLAY_PRIORITY order.
-    Numbered slots ("Projection 2") stay right after their base role; unlisted
-    roles keep their sheet order after the listed ones; lead goes last.
+    Order Media Tech role rows to follow the sheet's column order (left to right),
+    lead included — so admins change the roster order by moving sheet columns.
+    Numbered slots ("Projection 2") stay right after their base role. Roles not in
+    the sheet go after the sheet roles. With no sheet order, lead goes last.
     """
-    bases = set(role_slots)
-    priority = {r.lower(): i for i, r in enumerate(rules.MT_DISPLAY_PRIORITY)}
+    slots = [r for r in role_slots if r != lead_role]
+    bases = set(slots)
+    if not sheet_order:
+        return slots + [lead_role]
+
+    pos = {r.strip().lower(): i for i, r in enumerate(sheet_order)}
+    if lead_role.lower() not in pos:
+        pos[lead_role.lower()] = len(sheet_order)
 
     def base_of(slot: str) -> str:
         head, _, tail = slot.rpartition(" ")
@@ -120,9 +129,29 @@ def order_mt_display_roles(role_slots: List[str], lead_role: str) -> List[str]:
             return head
         return slot
 
-    indexed = list(enumerate(r for r in role_slots if r != lead_role))
-    indexed.sort(key=lambda x: (priority.get(base_of(x[1]).lower(), len(priority)), x[0]))
-    return [r for _, r in indexed] + [lead_role]
+    items = list(enumerate(slots + [lead_role]))
+    items.sort(key=lambda x: (pos.get(base_of(x[1]).lower(), len(sheet_order) + 1), x[0]))
+    return [r for _, r in items]
+
+
+def find_unavailability_clashes(
+    roster: Dict[date, Dict[str, str]], unavailability: Dict[date, Set[str]]
+) -> List[Tuple[str, date, str]]:
+    """
+    Every (name, date, role) where someone is on the roster for a date they marked
+    unavailable. Covers generated and manually edited cells; Details is skipped.
+    """
+    clashes = []
+    for d in sorted(roster):
+        out = {n.strip().lower() for n in (unavailability or {}).get(d, set())}
+        if not out:
+            continue
+        for role, person in roster[d].items():
+            if role == "Details" or not person:
+                continue
+            if person.strip().lower() in out:
+                clashes.append((person.strip(), d, role))
+    return clashes
 
 
 def unavailable_dates_by_person(
